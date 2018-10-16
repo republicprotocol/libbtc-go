@@ -279,3 +279,14 @@ func (client *client) ScriptFunded(address string, value int64) (bool, int64) {
 func (client *client) NetworkParams() *chaincfg.Params {
 	return client.Params
 }
+
+func (client *client) FormatTransactionView(msg, txhash string) string {
+	switch client.NetworkParams().Name {
+	case "mainnet":
+		return fmt.Sprintf("%s, https://www.blockchain.com/btc/tx/%s", msg, txhash)
+	case "testnet3":
+		return fmt.Sprintf("%s, transaction can be viewed at https://testnet.blockchain.info/tx/%s", msg, txhash)
+	default:
+		panic(fmt.Sprintf("Unsupported network: %s", client.NetworkParams().Name))
+	}
+}
