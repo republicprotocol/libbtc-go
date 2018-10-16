@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"time"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
@@ -26,12 +25,15 @@ func (account *account) newTx(msgtx *wire.MsgTx) *tx {
 	}
 }
 
-func (tx *tx) sign(f func(*txscript.ScriptBuilder), script []byte) error {
-	if script == nil {
-		script = tx.scriptPublicKey
+func (tx *tx) sign(f func(*txscript.ScriptBuilder), contract []byte) error {
+	var subScript []byte
+	if contract == nil {
+		subScript = tx.scriptPublicKey
+	} else {
+		subScript = contract
 	}
 	for i, txin := range tx.msgTx.TxIn {
-		sig, err := txscript.RawTxInSignature(tx.msgTx, i, script, txscript.SigHashAll, tx.account.PrivKey)
+		sig, err := txscript.RawTxInSignature(tx.msgTx, i, subScript, txscript.SigHashAll, tx.account.PrivKey)
 		if err != nil {
 			return err
 		}
@@ -40,6 +42,9 @@ func (tx *tx) sign(f func(*txscript.ScriptBuilder), script []byte) error {
 		builder.AddData(tx.account.PubKey)
 		if f != nil {
 			f(builder)
+		}
+		if contract != nil {
+			builder.AddData(contract)
 		}
 		sigScript, err := builder.Script()
 		if err != nil {
@@ -65,26 +70,13 @@ func (tx *tx) verify() error {
 	return nil
 }
 
-func (tx *tx) submit(postCon func(*wire.MsgTx) bool) error {
+func (tx *tx) submit() error {
 	var stxBuffer bytes.Buffer
 	stxBuffer.Grow(tx.msgTx.SerializeSize())
 	if err := tx.msgTx.Serialize(&stxBuffer); err != nil {
 		return err
 	}
-	for {
-		if err := tx.account.PublishTransaction(stxBuffer.Bytes()); err != nil {
-			return err
-		}
-		if postCon == nil {
-			return nil
-		}
-		for i := 0; i < 20; i++ {
-			if postCon(tx.msgTx) {
-				return nil
-			}
-			time.Sleep(15 * time.Second)
-		}
-	}
+	return tx.account.PublishTransaction(stxBuffer.Bytes())
 }
 
 func (tx *tx) fund(addr btcutil.Address, fee int64) error {
