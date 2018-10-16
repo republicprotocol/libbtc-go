@@ -26,13 +26,6 @@ func (account *account) newTx(msgtx *wire.MsgTx) *tx {
 	}
 }
 
-func (tx *tx) fund(scriptAddress btcutil.Address, fee int64) error {
-	if scriptAddress == nil {
-		return tx.fundFromAccount(fee)
-	}
-	return tx.fundFromScript(scriptAddress, fee)
-}
-
 func (tx *tx) sign(f func(*txscript.ScriptBuilder), script []byte) error {
 	if script == nil {
 		script = tx.scriptPublicKey
@@ -94,21 +87,26 @@ func (tx *tx) submit(postCon func(*wire.MsgTx) bool) error {
 	}
 }
 
-func (tx *tx) fundFromAccount(fee int64) error {
+func (tx *tx) fund(addr btcutil.Address, fee int64) error {
+	if addr == nil {
+		var err error
+		addr, err = tx.account.Address()
+		if err != nil {
+			return err
+		}
+	}
+
 	var value int64
 	for _, j := range tx.msgTx.TxOut {
 		value = value + j.Value
 	}
 	value = value + fee
-	addr, err := tx.account.Address()
-	if err != nil {
-		return err
-	}
 	unspentValue := tx.account.Balance(addr.EncodeAddress(), 0)
 	if value > unspentValue {
 		return fmt.Errorf("Not enough balance in %s "+
 			"required:%d current:%d", addr.EncodeAddress(), value, unspentValue)
 	}
+
 	utxos := tx.account.GetUnspentOutputs(addr.EncodeAddress(), 1000, 0)
 	for _, j := range utxos.Outputs {
 		ScriptPubKey, err := hex.DecodeString(j.ScriptPubKey)
@@ -138,6 +136,10 @@ func (tx *tx) fundFromAccount(fee int64) error {
 		value = value - j.Amount
 	}
 
+	if value > 0 {
+		return fmt.Errorf("Failed to fund the transaction mismatched script public keys")
+	}
+
 	if value < 0 {
 		P2PKHScript, err := txscript.PayToAddrScript(addr)
 		if err != nil {
@@ -145,36 +147,6 @@ func (tx *tx) fundFromAccount(fee int64) error {
 		}
 		tx.msgTx.AddTxOut(wire.NewTxOut(int64(-value), P2PKHScript))
 	}
-	if value > 0 {
-		return fmt.Errorf("Failed to fund the transaction mismatched script public keys")
-	}
-	return nil
-}
 
-func (tx *tx) fundFromScript(scriptAddress btcutil.Address, fee int64) error {
-	utxos := tx.account.GetUnspentOutputs(scriptAddress.EncodeAddress(), 1000, 0)
-	for _, j := range utxos.Outputs {
-		ScriptPubKey, err := hex.DecodeString(j.ScriptPubKey)
-		if err != nil {
-			return err
-		}
-		if bytes.Compare(tx.scriptPublicKey, []byte{}) == 0 {
-			tx.scriptPublicKey = ScriptPubKey
-		} else {
-			if bytes.Compare(tx.scriptPublicKey, ScriptPubKey) != 0 {
-				continue
-			}
-		}
-		tx.receiveValues = append(tx.receiveValues, j.Amount)
-		hashBytes, err := hex.DecodeString(j.TransactionHash)
-		if err != nil {
-			return err
-		}
-		hash, err := chainhash.NewHash(hashBytes)
-		if err != nil {
-			return err
-		}
-		tx.msgTx.AddTxIn(wire.NewTxIn(wire.NewOutPoint(hash, j.TransactionOutputNumber), []byte{}, [][]byte{}))
-	}
 	return nil
 }
