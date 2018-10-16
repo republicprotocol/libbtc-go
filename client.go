@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/btcsuite/btcd/chaincfg"
 )
 
 type PreviousOut struct {
@@ -104,16 +106,12 @@ type Unspent struct {
 }
 
 type client struct {
-	URL string
-}
-
-func Connect(url string) Client {
-	return &client{
-		URL: url,
-	}
+	URL    string
+	Params *chaincfg.Params
 }
 
 type Client interface {
+	NetworkParams() *chaincfg.Params
 	GetUnspentOutputs(address string, limit, confitmations int64) Unspent
 	GetRawTransaction(txhash string) Transaction
 	GetRawAddressInformation(addr string) SingleAddress
@@ -122,6 +120,24 @@ type Client interface {
 	ScriptSpent(address string) bool
 	ScriptFunded(address string, value int64) (bool, int64)
 	GetScriptFromSpentP2SH(address string) ([]byte, error)
+}
+
+func NewBlockchainInfoClient(network string) Client {
+	network = strings.ToLower(network)
+	switch network {
+	case "mainnet":
+		return &client{
+			URL:    "https://blockchain.info",
+			Params: &chaincfg.MainNetParams,
+		}
+	case "testnet", "testnet3", "":
+		return &client{
+			URL:    "https://testnet.blockchain.info",
+			Params: &chaincfg.TestNet3Params,
+		}
+	default:
+		panic(fmt.Sprintf("Unknown Network %s", network))
+	}
 }
 
 func (client *client) GetUnspentOutputs(address string, limit, confitmations int64) Unspent {
@@ -258,4 +274,8 @@ func (client *client) ScriptSpent(address string) bool {
 func (client *client) ScriptFunded(address string, value int64) (bool, int64) {
 	rawAddress := client.GetRawAddressInformation(address)
 	return rawAddress.Received >= value, rawAddress.Received
+}
+
+func (client *client) NetworkParams() *chaincfg.Params {
+	return client.Params
 }
