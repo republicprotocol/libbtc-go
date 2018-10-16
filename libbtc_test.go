@@ -231,5 +231,21 @@ var _ = Describe("", func() {
 			finalBalance := secondaryAccount.Balance(contractAddress, 0)
 			Expect(initialBalance - finalBalance).Should(Equal(int64(50000)))
 		})
+
+		It("should be able to extract details from a spent contract", func() {
+			spent := mainAccount.ScriptSpent(contractAddress)
+			Expect(spent).Should(BeTrue())
+			sigScript, err := mainAccount.GetScriptFromSpentP2SH(contractAddress)
+			Expect(err).Should(BeNil())
+			pushes, err := txscript.PushedData(sigScript)
+			Expect(err).Should(BeNil())
+			success := false
+			for _, push := range pushes {
+				if sha256.Sum256(push) == secretHash {
+					success = true
+				}
+			}
+			Expect(success).Should(BeTrue())
+		})
 	})
 })
