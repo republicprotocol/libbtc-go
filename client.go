@@ -121,6 +121,7 @@ type Client interface {
 	Balance(address string, confirmations int64) int64
 	ScriptSpent(address string) bool
 	ScriptFunded(address string, value int64) (bool, int64)
+	GetScriptFromSpentP2SH(address string) ([]byte, error)
 }
 
 func (client *client) GetUnspentOutputs(address string, limit, confitmations int64) Unspent {
@@ -220,6 +221,24 @@ func (client *client) PublishTransaction(signedTransaction []byte) error {
 		return fmt.Errorf("Error while submitting Bitcoin transaction: %s", stxResult)
 	}
 	return nil
+}
+
+func (client *client) GetScriptFromSpentP2SH(address string) ([]byte, error) {
+	for {
+		addrInfo := client.GetRawAddressInformation(address)
+		if addrInfo.Sent > 0 {
+			break
+		}
+	}
+	addrInfo := client.GetRawAddressInformation(address)
+	for _, tx := range addrInfo.Transactions {
+		for i := range tx.Inputs {
+			if tx.Inputs[i].PrevOut.Address == addrInfo.Address {
+				return hex.DecodeString(tx.Inputs[i].Script)
+			}
+		}
+	}
+	return nil, fmt.Errorf("No spending transactions")
 }
 
 func (client *client) Balance(address string, confirmations int64) int64 {
