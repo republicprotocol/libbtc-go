@@ -112,10 +112,10 @@ func (tx *tx) fund(addr btcutil.Address, fee int64) error {
 				continue
 			}
 		}
-		tx.receiveValues = append(tx.receiveValues, j.Amount)
 		if value <= 0 {
 			break
 		}
+		tx.receiveValues = append(tx.receiveValues, j.Amount)
 		hashBytes, err := hex.DecodeString(j.TransactionHash)
 		if err != nil {
 			return err
