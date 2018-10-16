@@ -120,6 +120,7 @@ type Client interface {
 	ScriptSpent(address string) bool
 	ScriptFunded(address string, value int64) (bool, int64)
 	GetScriptFromSpentP2SH(address string) ([]byte, error)
+	FormatTransactionView(msg, txhash string) string
 }
 
 func NewBlockchainInfoClient(network string) Client {
