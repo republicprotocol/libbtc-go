@@ -111,15 +111,29 @@ type client struct {
 }
 
 type Client interface {
+	// NetworkParams should return the network parameters of the underlying
+	// Bitcoin blockchain.
 	NetworkParams() *chaincfg.Params
 	GetUnspentOutputs(address string, limit, confitmations int64) Unspent
 	GetRawTransaction(txhash string) Transaction
 	GetRawAddressInformation(addr string) SingleAddress
+
+	// PublishTransaction should publish a signed transaction to the Bitcoin
+	// blockchain.
 	PublishTransaction(signedTransaction []byte) error
+
+	// Balance of the given address on Bitcoin blockchain.
 	Balance(address string, confirmations int64) int64
+
+	// ScriptSpent checks whether a script is spent.
 	ScriptSpent(address string) bool
+
+	// ScriptFunded checks whether a script is funded.
 	ScriptFunded(address string, value int64) (bool, int64)
 	GetScriptFromSpentP2SH(address string) ([]byte, error)
+
+	// FormatTransactionView formats the message and txhash into a user friendly
+	// message.
 	FormatTransactionView(msg, txhash string) string
 }
 
