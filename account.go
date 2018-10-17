@@ -1,29 +1,19 @@
 package libbtc
 
 import (
+	"context"
 	"crypto/ecdsa"
-	"errors"
-	"fmt"
 
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/txscript"
+	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcutil"
 )
-
-// ErrPreConditionCheckFailed indicates that the pre-condition for executing
-// a transaction failed.
-var ErrPreConditionCheckFailed = errors.New("pre-condition check failed")
-
-// ErrPostConditionCheckFailed indicates that the post-condition for executing
-// a transaction failed.
-var ErrPostConditionCheckFailed = errors.New("post-condition check failed")
 
 type account struct {
 	PrivKey *btcec.PrivateKey
-	PubKey  []byte
 	Client
 }
 
@@ -33,41 +23,33 @@ type account struct {
 type Account interface {
 	Client
 	Address() (btcutil.Address, error)
-	SerializedPublicKey() []byte
+	SerializedPublicKey() ([]byte, error)
 	SendTransaction(
+		ctx context.Context,
 		script []byte,
 		fee int64,
+		preCond func(*wire.MsgTx) bool,
 		f func(*txscript.ScriptBuilder),
-		preCon, postCon func(*wire.MsgTx) bool,
+		postCon func(*wire.MsgTx) bool,
 	) error
 }
 
 // NewAccount returns a user account for the provided private key which is
 // connected to a Bitcoin client.
 func NewAccount(client Client, privateKey *ecdsa.PrivateKey) Account {
-	privKey := (*btcec.PrivateKey)(privateKey)
-	pubKey := privKey.PubKey()
-	switch client.NetworkParams() {
-	case &chaincfg.MainNetParams:
-		return &account{
-			privKey,
-			pubKey.SerializeCompressed(),
-			client,
-		}
-	case &chaincfg.TestNet3Params:
-		return &account{
-			privKey,
-			pubKey.SerializeUncompressed(),
-			client,
-		}
-	default:
-		panic(fmt.Errorf("Unsupported network: %s", client.NetworkParams().Name))
+	return &account{
+		(*btcec.PrivateKey)(privateKey),
+		client,
 	}
 }
 
 // Address returns the address of the given private key
 func (account *account) Address() (btcutil.Address, error) {
-	pubKey, err := btcutil.NewAddressPubKey(account.PubKey, account.NetworkParams())
+	pubKeyBytes, err := account.SerializedPublicKey()
+	if err != nil {
+		return nil, err
+	}
+	pubKey, err := btcutil.NewAddressPubKey(pubKeyBytes, account.NetworkParams())
 	if err != nil {
 		return nil, err
 	}
@@ -76,28 +58,29 @@ func (account *account) Address() (btcutil.Address, error) {
 }
 
 // SendTransaction builds, signs, verifies and publishes a transaction to the
-// corresponding blockchain.
+// corresponding blockchain. If contract is provided then the transaction uses
+// the contract's unspent outputs for the transaction, otherwise uses the
+// account's unspent outputs to fund the transaction. preCond is executed in
+// the starting of the process, if it returns false SendTransaction returns
+// ErrPreConditionCheckFailed and stops the process. This function can be used
+// to modify how the unspent outputs are spent, this can be nil. f is supposed
+// to be used with non empty contracts, to modify the signature script. preCond
+// is executed in the starting of the process, if it returns false
+// SendTransaction returns ErrPreConditionCheckFailed and stops the process.
 func (account *account) SendTransaction(
-	// when trying to receive bitcoins from a contract, provide the contract
-	// data, otherwise can be nil.
+	ctx context.Context,
 	contract []byte,
-	// fee for the transaction
 	fee int64,
-	// If you need to add data to the signature script, implement this function
-	// and add data. signature, publickey and the script are embedded by default.
+	preCond func(*wire.MsgTx) bool,
 	f func(*txscript.ScriptBuilder),
-	// preCon is executed in the starting of the process, returns
-	// ErrPreConditionCheckFailed and stops the process.
-	// postCon is executed after submitting the transaction to the blockchain,
-	// returns ErrPostConditionCheckFailed if postCon returns false.
-	preCon, postCon func(*wire.MsgTx) bool,
+	postCond func(*wire.MsgTx) bool,
 ) error {
-	tx := account.newTx(wire.NewMsgTx(2))
-	if preCon != nil {
-		if !preCon(tx.msgTx) {
-			return ErrPreConditionCheckFailed
-		}
+	// Current Bitcoin Transaction Version (2).
+	tx := account.newTx(ctx, wire.NewMsgTx(2))
+	if preCond != nil && !preCond(tx.msgTx) {
+		return ErrPreConditionCheckFailed
 	}
+
 	var address btcutil.Address
 	var err error
 	if contract == nil {
@@ -111,26 +94,38 @@ func (account *account) SendTransaction(
 			return err
 		}
 	}
+
 	if err := tx.fund(address, fee); err != nil {
 		return err
 	}
+
 	if err := tx.sign(f, contract); err != nil {
 		return err
 	}
+
 	if err := tx.verify(); err != nil {
 		return err
 	}
+
 	if err := tx.submit(); err != nil {
 		return err
 	}
-	if postCon != nil {
-		if !postCon(tx.msgTx) {
-			return ErrPostConditionCheckFailed
-		}
+
+	if postCond != nil && !postCond(tx.msgTx) {
+		return ErrPostConditionCheckFailed
 	}
+
 	return nil
 }
 
-func (account *account) SerializedPublicKey() []byte {
-	return account.PubKey
+func (account *account) SerializedPublicKey() ([]byte, error) {
+	pubKey := account.PrivKey.PubKey()
+	switch account.NetworkParams() {
+	case &chaincfg.MainNetParams:
+		return pubKey.SerializeCompressed(), nil
+	case &chaincfg.TestNet3Params:
+		return pubKey.SerializeUncompressed(), nil
+	default:
+		return nil, NewErrUnsupportedNetwork(account.NetworkParams().Name)
+	}
 }
