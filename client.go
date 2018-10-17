@@ -156,105 +156,82 @@ func NewBlockchainInfoClient(network string) Client {
 	}
 }
 
-func (client *client) GetUnspentOutputs(context context.Context, address string, limit, confitmations int64) (Unspent, error) {
+func (client *client) GetUnspentOutputs(ctx context.Context, address string, limit, confitmations int64) (Unspent, error) {
 	if limit == 0 {
 		limit = 250
 	}
-	val, err := client.exponentialBackoff(context, func() (interface{}, error) {
+	utxos := Unspent{}
+	err := backoff(ctx, func() error {
 		resp, err := http.Get(fmt.Sprintf("%s/unspent?active=%s&confirmations=%d&limit=%d", client.URL, address, confitmations, limit))
 		if err != nil {
-			return nil, err
+			return err
 		}
 		defer resp.Body.Close()
 
-		utxoBytes, err := ioutil.ReadAll(resp.Body)
+		respBytes, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		if string(utxoBytes) == "No free outputs to spend" {
-			return Unspent{
-				Outputs: []UnspentOutput{},
-			}, nil
+		if string(respBytes) == "No free outputs to spend" {
+			return nil
 		}
-		utxos := Unspent{}
-		if err := json.Unmarshal(utxoBytes, &utxos); err != nil {
-			return nil, err
-		}
-		return utxos, nil
+		return json.Unmarshal(respBytes, &utxos)
 	})
-
-	if err != nil {
-		return Unspent{}, err
-	}
-	return val.(Unspent), nil
+	return utxos, err
 }
 
-func (client *client) GetRawTransaction(context context.Context, txhash string) (Transaction, error) {
-	val, err := client.exponentialBackoff(context, func() (interface{}, error) {
+func (client *client) GetRawTransaction(ctx context.Context, txhash string) (Transaction, error) {
+	transaction := Transaction{}
+	err := backoff(ctx, func() error {
 		resp, err := http.Get(fmt.Sprintf("%s/rawtx/%s", client.URL, txhash))
 		if err != nil {
-			return nil, err
+			return err
 		}
 		defer resp.Body.Close()
 		txBytes, err := ioutil.ReadAll(resp.Body)
-
-		transaction := Transaction{}
-		if err := json.Unmarshal(txBytes, &transaction); err != nil {
-			return nil, err
-		}
-
-		return transaction, nil
+		return json.Unmarshal(txBytes, &transaction)
 	})
-	if err != nil {
-		return Transaction{}, err
-	}
-	return val.(Transaction), nil
+	return transaction, err
 }
 
-func (client *client) GetRawAddressInformation(context context.Context, addr string) (SingleAddress, error) {
-	val, err := client.exponentialBackoff(context, func() (interface{}, error) {
+func (client *client) GetRawAddressInformation(ctx context.Context, addr string) (SingleAddress, error) {
+	addressInfo := SingleAddress{}
+	err := backoff(ctx, func() error {
 		resp, err := http.Get(fmt.Sprintf("%s/rawaddr/%s", client.URL, addr))
 		if err != nil {
-			return nil, err
+			return err
 		}
 		defer resp.Body.Close()
 		addrBytes, err := ioutil.ReadAll(resp.Body)
-		addressInfo := SingleAddress{}
-		if err := json.Unmarshal(addrBytes, &addressInfo); err != nil {
-			return nil, err
-		}
-		return addressInfo, nil
+		return json.Unmarshal(addrBytes, &addressInfo)
 	})
-	if err != nil {
-		return SingleAddress{}, err
-	}
-	return val.(SingleAddress), nil
+	return addressInfo, err
 }
 
 func (client *client) PublishTransaction(ctx context.Context, signedTransaction []byte) error {
 	data := url.Values{}
 	data.Set("tx", hex.EncodeToString(signedTransaction))
-	_, err := client.exponentialBackoff(ctx, func() (interface{}, error) {
+	err := backoff(ctx, func() error {
 		httpClient := &http.Client{}
 		r, err := http.NewRequest("POST", fmt.Sprintf("%s/pushtx", client.URL), strings.NewReader(data.Encode())) // URL-encoded payload
 		if err != nil {
-			return nil, err
+			return err
 		}
 		r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 		resp, err := httpClient.Do(r)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		defer resp.Body.Close()
 		stxResultBytes, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		stxResult := string(stxResultBytes)
 		if !strings.Contains(stxResult, "Transaction Submitted") {
-			return nil, NewErrBitcoinSubmitTx(stxResult)
+			return NewErrBitcoinSubmitTx(stxResult)
 		}
-		return nil, nil
+		return nil
 	})
 	return err
 }
@@ -322,16 +299,16 @@ func (client *client) FormatTransactionView(msg, txhash string) string {
 	}
 }
 
-func (client *client) exponentialBackoff(ctx context.Context, f func() (interface{}, error)) (interface{}, error) {
+func backoff(ctx context.Context, f func() error) error {
 	duration := time.Duration(1000)
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, ErrTimedOut
+			return ErrTimedOut
 		default:
-			val, err := f()
+			err := f()
 			if err == nil {
-				return val, nil
+				return nil
 			}
 			fmt.Printf("Error: %v, will try again in %d sec\n", err, duration)
 			time.Sleep(duration * time.Millisecond)

@@ -30,7 +30,7 @@ type Account interface {
 		fee int64,
 		preCond func(*wire.MsgTx) bool,
 		f func(*txscript.ScriptBuilder),
-		postCon func(*wire.MsgTx) bool,
+		postCond func(*wire.MsgTx) bool,
 	) error
 }
 
