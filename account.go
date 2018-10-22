@@ -3,6 +3,7 @@ package libbtc
 import (
 	"context"
 	"crypto/ecdsa"
+	"time"
 
 	"github.com/btcsuite/btcd/chaincfg"
 
@@ -107,15 +108,22 @@ func (account *account) SendTransaction(
 		return err
 	}
 
-	if err := tx.submit(); err != nil {
-		return err
+	for {
+		select {
+		case <-ctx.Done():
+			return ErrPostConditionCheckFailed
+		default:
+			if err := tx.submit(); err != nil {
+				return err
+			}
+			for i := 0; i < 60; i++ {
+				if postCond == nil || postCond(tx.msgTx) {
+					return nil
+				}
+				time.Sleep(5 * time.Second)
+			}
+		}
 	}
-
-	if postCond != nil && !postCond(tx.msgTx) {
-		return ErrPostConditionCheckFailed
-	}
-
-	return nil
 }
 
 func (account *account) SerializedPublicKey() ([]byte, error) {
