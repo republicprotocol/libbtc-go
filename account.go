@@ -25,6 +25,7 @@ type Account interface {
 	Client
 	Address() (btcutil.Address, error)
 	SerializedPublicKey() ([]byte, error)
+	Transfer(ctx context.Context, to string, value int64) error
 	SendTransaction(
 		ctx context.Context,
 		script []byte,
@@ -56,6 +57,29 @@ func (account *account) Address() (btcutil.Address, error) {
 	}
 	addrString := pubKey.EncodeAddress()
 	return btcutil.DecodeAddress(addrString, account.NetworkParams())
+}
+
+// Transfer bitcoins to the given address
+func (account *account) Transfer(ctx context.Context, to string, value int64) error {
+	address, err := btcutil.DecodeAddress(to, account.NetworkParams())
+	if err != nil {
+		return err
+	}
+	return account.SendTransaction(
+		ctx,
+		nil,
+		1000,
+		func(tx *wire.MsgTx) bool {
+			P2PKHScript, err := txscript.PayToAddrScript(address)
+			if err != nil {
+				return false
+			}
+			tx.AddTxOut(wire.NewTxOut(value, P2PKHScript))
+			return true
+		},
+		nil,
+		nil,
+	)
 }
 
 // SendTransaction builds, signs, verifies and publishes a transaction to the

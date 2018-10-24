@@ -138,21 +138,7 @@ var _ = Describe("LibBTC", func() {
 			initialBalance, err := secondaryAccount.Balance(context.Background(), secAddr.String(), 0)
 			Expect(err).Should(BeNil())
 			// building a transaction to transfer bitcoin to the secondary address
-			err = mainAccount.SendTransaction(
-				context.Background(),
-				nil,
-				10000, // fee
-				func(tx *wire.MsgTx) bool {
-					P2PKHScript, err := txscript.PayToAddrScript(secAddr)
-					if err != nil {
-						return false
-					}
-					tx.AddTxOut(wire.NewTxOut(10000, P2PKHScript))
-					return true
-				},
-				nil,
-				nil,
-			)
+			err = mainAccount.Transfer(context.Background(), secAddr.String(), 10000)
 			Expect(err).Should(BeNil())
 			finalBalance, err := secondaryAccount.Balance(context.Background(), secAddr.String(), 0)
 			Expect(err).Should(BeNil())
