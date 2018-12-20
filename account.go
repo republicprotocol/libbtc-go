@@ -30,6 +30,7 @@ type Account interface {
 		ctx context.Context,
 		script []byte,
 		fee int64,
+		updateTxIn func(*wire.TxIn),
 		preCond func(*wire.MsgTx) bool,
 		f func(*txscript.ScriptBuilder),
 		postCond func(*wire.MsgTx) bool,
@@ -69,6 +70,7 @@ func (account *account) Transfer(ctx context.Context, to string, value int64) er
 		ctx,
 		nil,
 		1000,
+		nil,
 		func(tx *wire.MsgTx) bool {
 			P2PKHScript, err := txscript.PayToAddrScript(address)
 			if err != nil {
@@ -96,6 +98,7 @@ func (account *account) SendTransaction(
 	ctx context.Context,
 	contract []byte,
 	fee int64,
+	updateTxIn func(*wire.TxIn),
 	preCond func(*wire.MsgTx) bool,
 	f func(*txscript.ScriptBuilder),
 	postCond func(*wire.MsgTx) bool,
@@ -124,7 +127,7 @@ func (account *account) SendTransaction(
 		return err
 	}
 
-	if err := tx.sign(f, contract); err != nil {
+	if err := tx.sign(f, updateTxIn, contract); err != nil {
 		return err
 	}
 

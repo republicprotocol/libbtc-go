@@ -155,6 +155,7 @@ var _ = Describe("LibBTC", func() {
 				context.Background(),
 				nil,
 				10000, // fee
+				nil,
 				func(msgtx *wire.MsgTx) bool {
 					funded, val, err := mainAccount.ScriptFunded(context.Background(), contractAddress.EncodeAddress(), 50000)
 					if err != nil {
@@ -194,6 +195,7 @@ var _ = Describe("LibBTC", func() {
 				context.Background(),
 				contract,
 				10000, // fee
+				nil,
 				func(msgtx *wire.MsgTx) bool {
 					funded, val, err := secondaryAccount.ScriptFunded(context.Background(), contractAddress.EncodeAddress(), 50000)
 					if err != nil {

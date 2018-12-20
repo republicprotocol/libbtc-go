@@ -98,7 +98,7 @@ func (tx *tx) fund(addr btcutil.Address, fee int64) error {
 	return nil
 }
 
-func (tx *tx) sign(f func(*txscript.ScriptBuilder), contract []byte) error {
+func (tx *tx) sign(f func(*txscript.ScriptBuilder), updateTxIn func(*wire.TxIn), contract []byte) error {
 	var subScript []byte
 	if contract == nil {
 		subScript = tx.scriptPublicKey
@@ -110,7 +110,9 @@ func (tx *tx) sign(f func(*txscript.ScriptBuilder), contract []byte) error {
 		return err
 	}
 	for i, txin := range tx.msgTx.TxIn {
-		txin.Sequence = 0
+		if updateTxIn != nil {
+			updateTxIn(txin)
+		}
 		sig, err := txscript.RawTxInSignature(tx.msgTx, i, subScript, txscript.SigHashAll, tx.account.PrivKey)
 		if err != nil {
 			return err
