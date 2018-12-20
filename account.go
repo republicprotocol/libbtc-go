@@ -69,7 +69,7 @@ func (account *account) Transfer(ctx context.Context, to string, value int64) er
 	return account.SendTransaction(
 		ctx,
 		nil,
-		1000,
+		10000,
 		nil,
 		func(tx *wire.MsgTx) bool {
 			P2PKHScript, err := txscript.PayToAddrScript(address)
