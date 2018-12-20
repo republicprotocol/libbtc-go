@@ -3,6 +3,8 @@ package libbtc
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/hex"
+	"fmt"
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg"
@@ -16,6 +18,19 @@ import (
 type account struct {
 	PrivKey *btcec.PrivateKey
 	Client
+}
+
+type Client interface {
+	// NetworkParams should return the network parameters of the underlying
+	// Bitcoin blockchain.
+	NetworkParams() *chaincfg.Params
+	GetUnspentOutputs(ctx context.Context, address string, limit, confitmations int64) (Unspent, error)
+	// GetRawTransaction(ctx context.Context, txhash string) (Transaction, error)
+	GetRawAddressInformation(ctx context.Context, addr string) (SingleAddress, error)
+
+	// PublishTransaction should publish a signed transaction to the Bitcoin
+	// blockchain.
+	PublishTransaction(ctx context.Context, signedTransaction []byte) error
 }
 
 // Account is an Bitcoin external account that can sign and submit transactions
@@ -34,6 +49,20 @@ type Account interface {
 		f func(*txscript.ScriptBuilder),
 		postCond func(*wire.MsgTx) bool,
 	) error
+
+	// Balance of the given address on Bitcoin blockchain.
+	Balance(ctx context.Context, address string, confirmations int64) (int64, error)
+
+	// ScriptSpent checks whether a script is spent.
+	ScriptSpent(ctx context.Context, address string) (bool, error)
+
+	// ScriptFunded checks whether a script is funded.
+	ScriptFunded(ctx context.Context, address string, value int64) (bool, int64, error)
+	GetScriptFromSpentP2SH(ctx context.Context, address string) ([]byte, error)
+
+	// FormatTransactionView formats the message and txhash into a user friendly
+	// message.
+	FormatTransactionView(msg, txhash string) string
 }
 
 // NewAccount returns a user account for the provided private key which is
@@ -147,6 +176,65 @@ func (account *account) SendTransaction(
 				time.Sleep(5 * time.Second)
 			}
 		}
+	}
+}
+
+func (account *account) GetScriptFromSpentP2SH(ctx context.Context, address string) ([]byte, error) {
+	for {
+		addrInfo, err := account.GetRawAddressInformation(ctx, address)
+		if err != nil {
+			return nil, err
+		}
+		if addrInfo.Sent > 0 {
+			break
+		}
+	}
+	addrInfo, err := account.GetRawAddressInformation(ctx, address)
+	if err != nil {
+		return nil, err
+	}
+	for _, tx := range addrInfo.Transactions {
+		for i := range tx.Inputs {
+			if tx.Inputs[i].PrevOut.Address == addrInfo.Address {
+				return hex.DecodeString(tx.Inputs[i].Script)
+			}
+		}
+	}
+	return nil, ErrNoSpendingTransactions
+}
+
+func (account *account) Balance(ctx context.Context, address string, confirmations int64) (balance int64, err error) {
+	unspent, err := account.GetUnspentOutputs(ctx, address, 1000, confirmations)
+	for _, utxo := range unspent.Outputs {
+		balance = balance + utxo.Amount
+	}
+	return
+}
+
+func (account *account) ScriptSpent(ctx context.Context, address string) (bool, error) {
+	rawAddress, err := account.GetRawAddressInformation(ctx, address)
+	if err != nil {
+		return false, err
+	}
+	return rawAddress.Sent > 0, nil
+}
+
+func (account *account) ScriptFunded(ctx context.Context, address string, value int64) (bool, int64, error) {
+	rawAddress, err := account.GetRawAddressInformation(ctx, address)
+	if err != nil {
+		return false, 0, err
+	}
+	return rawAddress.Received >= value, rawAddress.Received, nil
+}
+
+func (account *account) FormatTransactionView(msg, txhash string) string {
+	switch account.NetworkParams().Name {
+	case "mainnet":
+		return fmt.Sprintf("%s, transaction can be viewed at https://www.blockchain.com/btc/tx/%s", msg, txhash)
+	case "testnet3":
+		return fmt.Sprintf("%s, transaction can be viewed at https://testnet.blockchain.info/tx/%s", msg, txhash)
+	default:
+		panic(NewErrUnsupportedNetwork(account.NetworkParams().Name))
 	}
 }
 
