@@ -110,6 +110,7 @@ func (tx *tx) sign(f func(*txscript.ScriptBuilder), contract []byte) error {
 		return err
 	}
 	for i, txin := range tx.msgTx.TxIn {
+		txin.Sequence = 0
 		sig, err := txscript.RawTxInSignature(tx.msgTx, i, subScript, txscript.SigHashAll, tx.account.PrivKey)
 		if err != nil {
 			return err
