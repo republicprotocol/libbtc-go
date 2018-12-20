@@ -106,6 +106,13 @@ type Unspent struct {
 	Outputs []UnspentOutput `json:"unspent_outputs"`
 }
 
+type LatestBlock struct {
+	Hash       string `json:"hash"`
+	Time       int64  `json:"time"`
+	BlockIndex int64  `json:"block_index"`
+	Height     int64  `json:"height"`
+}
+
 type client struct {
 	URL    string
 	Params *chaincfg.Params
@@ -132,6 +139,8 @@ type Client interface {
 	// ScriptFunded checks whether a script is funded.
 	ScriptFunded(ctx context.Context, address string, value int64) (bool, int64, error)
 	GetScriptFromSpentP2SH(ctx context.Context, address string) ([]byte, error)
+
+	Confirmations(ctx context.Context, txHash string) (int64, error)
 
 	// FormatTransactionView formats the message and txhash into a user friendly
 	// message.
@@ -194,6 +203,21 @@ func (client *client) GetRawTransaction(ctx context.Context, txhash string) (Tra
 	return transaction, err
 }
 
+func (client *client) Confirmations(ctx context.Context, txhash string) (int64, error) {
+	tx, err := client.GetRawTransaction(ctx, txhash)
+	if err != nil {
+		return 0, err
+	}
+	if tx.BlockHeight != 0 {
+		latest, err := client.LatestBlock(ctx)
+		if err != nil {
+			return 0, err
+		}
+		return 1 + (latest.Height - tx.BlockHeight), nil
+	}
+	return 0, nil
+}
+
 func (client *client) GetRawAddressInformation(ctx context.Context, addr string) (SingleAddress, error) {
 	addressInfo := SingleAddress{}
 	err := backoff(ctx, func() error {
@@ -206,6 +230,20 @@ func (client *client) GetRawAddressInformation(ctx context.Context, addr string)
 		return json.Unmarshal(addrBytes, &addressInfo)
 	})
 	return addressInfo, err
+}
+
+func (client *client) LatestBlock(ctx context.Context) (LatestBlock, error) {
+	latestBlock := LatestBlock{}
+	err := backoff(ctx, func() error {
+		resp, err := http.Get(fmt.Sprintf("%s/latestblock", client.URL))
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		latestBlockBytes, err := ioutil.ReadAll(resp.Body)
+		return json.Unmarshal(latestBlockBytes, &latestBlock)
+	})
+	return latestBlock, err
 }
 
 func (client *client) PublishTransaction(ctx context.Context, signedTransaction []byte) error {
