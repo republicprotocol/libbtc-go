@@ -197,14 +197,14 @@ var _ = Describe("LibBTC", func() {
 				10000, // fee
 				nil,
 				func(msgtx *wire.MsgTx) bool {
-					funded, val, err := secondaryAccount.ScriptFunded(context.Background(), contractAddress.EncodeAddress(), 50000)
+					redeemed, val, err := secondaryAccount.ScriptRedeemed(context.Background(), contractAddress.EncodeAddress(), 50000)
 					if err != nil {
 						return false
 					}
-					if funded {
+					if !redeemed {
 						msgtx.AddTxOut(wire.NewTxOut(val-10000, P2PKHScript)) // value - fee
 					}
-					return funded
+					return !redeemed
 				},
 				func(builder *txscript.ScriptBuilder) {
 					builder.AddData(secret[:])

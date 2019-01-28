@@ -138,6 +138,9 @@ type Client interface {
 
 	// ScriptFunded checks whether a script is funded.
 	ScriptFunded(ctx context.Context, address string, value int64) (bool, int64, error)
+
+	ScriptRedeemed(ctx context.Context, address string, value int64) (bool, int64, error)
+
 	GetScriptFromSpentP2SH(ctx context.Context, address string) ([]byte, error)
 
 	Confirmations(ctx context.Context, txHash string) (int64, error)
@@ -320,6 +323,14 @@ func (client *client) ScriptFunded(ctx context.Context, address string, value in
 		return false, 0, err
 	}
 	return rawAddress.Received >= value, rawAddress.Received, nil
+}
+
+func (client *client) ScriptRedeemed(ctx context.Context, address string, value int64) (bool, int64, error) {
+	rawAddress, err := client.GetRawAddressInformation(ctx, address)
+	if err != nil {
+		return false, 0, err
+	}
+	return rawAddress.Received >= value && rawAddress.Balance == 0, rawAddress.Balance, nil
 }
 
 func (client *client) NetworkParams() *chaincfg.Params {
