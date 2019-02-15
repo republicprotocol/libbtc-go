@@ -340,9 +340,9 @@ func (client *client) NetworkParams() *chaincfg.Params {
 func (client *client) FormatTransactionView(msg, txhash string) string {
 	switch client.NetworkParams().Name {
 	case "mainnet":
-		return fmt.Sprintf("%s, transaction can be viewed at https://www.blockchain.com/btc/tx/%s", msg, txhash)
+		return fmt.Sprintf("%s, transaction can be viewed at https://live.blockcypher.com/btc/tx/%s", msg, txhash)
 	case "testnet3":
-		return fmt.Sprintf("%s, transaction can be viewed at https://testnet.blockchain.info/tx/%s", msg, txhash)
+		return fmt.Sprintf("%s, transaction can be viewed at https://live.blockcypher.com/btc-testnet/tx/%s", msg, txhash)
 	default:
 		panic(NewErrUnsupportedNetwork(client.NetworkParams().Name))
 	}
