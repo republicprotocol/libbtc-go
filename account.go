@@ -25,7 +25,7 @@ type Account interface {
 	Client
 	Address() (btcutil.Address, error)
 	SerializedPublicKey() ([]byte, error)
-	Transfer(ctx context.Context, to string, value int64) (string, error)
+	Transfer(ctx context.Context, to string, value, fee int64) (string, error)
 	SendTransaction(
 		ctx context.Context,
 		script []byte,
@@ -61,7 +61,7 @@ func (account *account) Address() (btcutil.Address, error) {
 }
 
 // Transfer bitcoins to the given address
-func (account *account) Transfer(ctx context.Context, to string, value int64) (string, error) {
+func (account *account) Transfer(ctx context.Context, to string, value, fee int64) (string, error) {
 	address, err := btcutil.DecodeAddress(to, account.NetworkParams())
 	if err != nil {
 		return "", err
@@ -70,7 +70,7 @@ func (account *account) Transfer(ctx context.Context, to string, value int64) (s
 	return txHash, account.SendTransaction(
 		ctx,
 		nil,
-		10000,
+		fee,
 		nil,
 		func(tx *wire.MsgTx) bool {
 			P2PKHScript, err := txscript.PayToAddrScript(address)
